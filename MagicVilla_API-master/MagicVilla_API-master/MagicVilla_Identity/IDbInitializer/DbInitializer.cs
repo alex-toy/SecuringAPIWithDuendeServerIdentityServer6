@@ -1,4 +1,5 @@
-﻿using MagicVilla_Identity.Data;
+﻿using IdentityModel;
+using MagicVilla_Identity.Data;
 using MagicVilla_Identity.Models;
 using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
