@@ -63,7 +63,6 @@ namespace MagicVilla_Web.Controllers
             return View();
         }
 
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Register(RegisterationRequestDTO obj)
