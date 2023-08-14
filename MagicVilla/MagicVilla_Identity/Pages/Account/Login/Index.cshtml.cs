@@ -4,10 +4,14 @@ using Duende.IdentityServer.Models;
 using Duende.IdentityServer.Services;
 using Duende.IdentityServer.Stores;
 using Duende.IdentityServer.Test;
+using MagicVilla_Identity.Data;
+using MagicVilla_Identity.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using SignInResult = Microsoft.AspNetCore.Identity.SignInResult;
 
 namespace UI.Pages.Login;
 
@@ -15,7 +19,11 @@ namespace UI.Pages.Login;
 [AllowAnonymous]
 public class Index : PageModel
 {
-    private readonly TestUserStore _users;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly ApplicationDbContext _db;
+    //private readonly TestUserStore _users;
     private readonly IIdentityServerInteractionService _interaction;
     private readonly IEventService _events;
     private readonly IAuthenticationSchemeProvider _schemeProvider;
@@ -25,21 +33,29 @@ public class Index : PageModel
         
     [BindProperty]
     public InputModel Input { get; set; }
-        
+
     public Index(
         IIdentityServerInteractionService interaction,
         IAuthenticationSchemeProvider schemeProvider,
         IIdentityProviderStore identityProviderStore,
         IEventService events,
-        TestUserStore users = null)
+        //TestUserStore users = null,
+        UserManager<ApplicationUser> userManager = null,
+        SignInManager<ApplicationUser> signInManager = null,
+        RoleManager<IdentityRole> roleManager = null,
+        ApplicationDbContext db = null)
     {
         // this is where you would plug in your own custom identity management library (e.g. ASP.NET Identity)
-        _users = users ?? throw new Exception("Please call 'AddTestUsers(TestUsers.Users)' on the IIdentityServerBuilder in Startup or remove the TestUserStore from the AccountController.");
-            
+        //_users = users ?? throw new Exception("Please call 'AddTestUsers(TestUsers.Users)' on the IIdentityServerBuilder in Startup or remove the TestUserStore from the AccountController.");
+
         _interaction = interaction;
         _schemeProvider = schemeProvider;
         _identityProviderStore = identityProviderStore;
         _events = events;
+        _userManager = userManager;
+        _signInManager = signInManager;
+        _roleManager = roleManager;
+        _db = db;
     }
 
     public async Task<IActionResult> OnGet(string returnUrl)
@@ -58,101 +74,71 @@ public class Index : PageModel
     public async Task<IActionResult> OnPost()
     {
         // check if we are in the context of an authorization request
-        var context = await _interaction.GetAuthorizationContextAsync(Input.ReturnUrl);
+        AuthorizationRequest? authorizationRequest = await _interaction.GetAuthorizationContextAsync(Input.ReturnUrl);
 
         // the user clicked the "cancel" button
         if (Input.Button != "login")
         {
-            if (context != null)
-            {
-                // if the user cancels, send a result back into IdentityServer as if they 
-                // denied the consent (even if this client does not require consent).
-                // this will send back an access denied OIDC error response to the client.
-                await _interaction.DenyAuthorizationAsync(context, AuthorizationError.AccessDenied);
+            if (authorizationRequest == null) return Redirect("~/");
 
-                // we can trust model.ReturnUrl since GetAuthorizationContextAsync returned non-null
-                if (context.IsNativeClient())
-                {
-                    // The client is native, so this change in how to
-                    // return the response is for better UX for the end user.
-                    return this.LoadingPage(Input.ReturnUrl);
-                }
+            await _interaction.DenyAuthorizationAsync(authorizationRequest, AuthorizationError.AccessDenied);
 
-                return Redirect(Input.ReturnUrl);
-            }
-            else
-            {
-                // since we don't have a valid context, then we just go back to the home page
-                return Redirect("~/");
-            }
+            if (authorizationRequest.IsNativeClient()) return this.LoadingPage(Input.ReturnUrl);
+
+            return Redirect(Input.ReturnUrl);
         }
 
-        if (ModelState.IsValid)
+        if (!ModelState.IsValid)
         {
-            // validate username/password against in-memory store
-            if (_users.ValidateCredentials(Input.Username, Input.Password))
-            {
-                var user = _users.FindByUsername(Input.Username);
-                await _events.RaiseAsync(new UserLoginSuccessEvent(user.Username, user.SubjectId, user.Username, clientId: context?.Client.ClientId));
+            // something went wrong, show form with error
+            await BuildModelAsync(Input.ReturnUrl);
+            return Page();
+        }
 
-                // only set explicit expiration here if user chooses "remember me". 
-                // otherwise we rely upon expiration configured in cookie middleware.
-                AuthenticationProperties props = null;
-                if (LoginOptions.AllowRememberLogin && Input.RememberLogin)
-                {
-                    props = new AuthenticationProperties
-                    {
-                        IsPersistent = true,
-                        ExpiresUtc = DateTimeOffset.UtcNow.Add(LoginOptions.RememberMeLoginDuration)
-                    };
-                };
+        // validate username/password against in-memory store
+        SignInResult result = await GetSignInResult();
 
-                // issue authentication cookie with subject ID and username
-                var isuser = new IdentityServerUser(user.SubjectId)
-                {
-                    DisplayName = user.Username
-                };
-
-                await HttpContext.SignInAsync(isuser, props);
-
-                if (context != null)
-                {
-                    if (context.IsNativeClient())
-                    {
-                        // The client is native, so this change in how to
-                        // return the response is for better UX for the end user.
-                        return this.LoadingPage(Input.ReturnUrl);
-                    }
-
-                    // we can trust model.ReturnUrl since GetAuthorizationContextAsync returned non-null
-                    return Redirect(Input.ReturnUrl);
-                }
-
-                // request for a local page
-                if (Url.IsLocalUrl(Input.ReturnUrl))
-                {
-                    return Redirect(Input.ReturnUrl);
-                }
-                else if (string.IsNullOrEmpty(Input.ReturnUrl))
-                {
-                    return Redirect("~/");
-                }
-                else
-                {
-                    // user might have clicked on a malicious link - should be logged
-                    throw new Exception("invalid return URL");
-                }
-            }
-
-            await _events.RaiseAsync(new UserLoginFailureEvent(Input.Username, "invalid credentials", clientId:context?.Client.ClientId));
+        if (!result.Succeeded)
+        {
+            var failureEvent = new UserLoginFailureEvent(Input.Username, "invalid credentials", clientId: authorizationRequest?.Client.ClientId);
+            await _events.RaiseAsync(failureEvent);
             ModelState.AddModelError(string.Empty, LoginOptions.InvalidCredentialsErrorMessage);
         }
 
-        // something went wrong, show form with error
-        await BuildModelAsync(Input.ReturnUrl);
-        return Page();
+        ApplicationUser? user = GetApplicationUser();
+        var successEvent = new UserLoginSuccessEvent(user.UserName, user.Id, user.UserName, clientId: authorizationRequest?.Client.ClientId);
+        await _events.RaiseAsync(successEvent);
+
+        // issue authentication cookie with subject ID and username
+        IdentityServerUser isuser = new IdentityServerUser(user.Id)
+        {
+            DisplayName = user.UserName
+        };
+
+        if (authorizationRequest != null)
+        {
+            if (authorizationRequest.IsNativeClient()) return this.LoadingPage(Input.ReturnUrl);
+            return Redirect(Input.ReturnUrl);
+        }
+
+        // request for a local page
+        if (Url.IsLocalUrl(Input.ReturnUrl)) return Redirect(Input.ReturnUrl);
+        if (string.IsNullOrEmpty(Input.ReturnUrl)) return Redirect("~/");
+
+        // user might have clicked on a malicious link - should be logged
+        throw new Exception("invalid return URL");
     }
-        
+
+    private async Task<SignInResult> GetSignInResult()
+    {
+        return await _signInManager.PasswordSignInAsync(Input.Username, Input.Password, Input.RememberLogin, lockoutOnFailure: false);
+    }
+
+    private ApplicationUser? GetApplicationUser()
+    {
+        return _db.ApplicationUsers.FirstOrDefault(u => u.UserName.ToLower() == Input.Username.ToLower());
+    }
+
     private async Task BuildModelAsync(string returnUrl)
     {
         Input = new InputModel

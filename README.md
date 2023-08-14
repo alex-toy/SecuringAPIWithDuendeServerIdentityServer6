@@ -17,22 +17,22 @@ dotnet new --install Duende.IdentityServer.Templates
 ```
 Duende.IdentityServer.AspNetIdentity
 Microsoft.AspNetCore.Identity.EntityFrameworkCore
+Microsoft.AspNetCore.Authentication.OpenIdConnect
 Microsoft.AspNetCore.Identity.UI
 Microsoft.EntityFrameworkCore.SqlServer
 Microsoft.EntityFrameworkCore.Tools
 ```
 
+- run the project 
+<img src="/pictures/identity_server.png" title="identity server"  width="900">
 
 
+## MagicVilla_Web
 
-
-
-
-
-
-
-
-
-
-<img src="/pictures/grpc.png" title="general picture of grpc"  width="900">
+- install packages
+```
+Microsoft.AspNetCore.Authentication.OpenIdConnect
+```
+- run the Identity, API and Web. Then go to login 
+<img src="/pictures/identity_server2.png" title="identity server"  width="900">
 

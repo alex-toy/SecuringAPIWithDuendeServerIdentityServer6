@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
-string connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+string connectionString = builder.Configuration.GetConnectionString("DefaultSQLConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
@@ -22,17 +22,20 @@ builder.Services.AddScoped<IDbInitializer, DbInitializer>();
 
 builder.Services.AddRazorPages();
 
-//builder.Services.AddIdentityServer(options =>
-//{
-//    options.Events.RaiseErrorEvents = true;
-//    options.Events.RaiseInformationEvents = true;
-//    options.Events.RaiseFailureEvents = true;
-//    options.Events.RaiseSuccessEvents = true;
-//    options.EmitStaticAudienceClaim = true;
-//}).AddInMemoryIdentityResources(SD.IdentityResources)
-//.AddInMemoryApiScopes(SD.ApiScopes)
-//.AddInMemoryClients(SD.Cleints).AddAspNetIdentity<ApplicationUser>()
-//.AddDeveloperSigningCredential().AddProfileService<ProfileService>();
+IIdentityServerBuilder identityServerBuilder = builder.Services.AddIdentityServer(options =>
+{
+    options.Events.RaiseErrorEvents = true;
+    options.Events.RaiseInformationEvents = true;
+    options.Events.RaiseFailureEvents = true;
+    options.Events.RaiseSuccessEvents = true;
+    options.EmitStaticAudienceClaim = true;
+});
+identityServerBuilder.AddInMemoryIdentityResources(SD.IdentityResources);
+identityServerBuilder.AddInMemoryApiScopes(SD.ApiScopes);
+identityServerBuilder.AddInMemoryClients(SD.Clients);
+identityServerBuilder.AddAspNetIdentity<ApplicationUser>();
+identityServerBuilder.AddDeveloperSigningCredential();
+//identityServerBuilder.AddProfileService<ProfileService>();
 
 //builder.Services.AddScoped<IProfileService, ProfileService>();
 
@@ -48,14 +51,15 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
+SeedDatabase();
 app.UseRouting();
 
 app.UseIdentityServer();
 
 app.UseAuthorization();
 
-app.MapRazorPages().RequireAuthorization();
+app.MapRazorPages();
+    //.RequireAuthorization();
 
 app.MapControllerRoute(
     name: "default",
