@@ -19,7 +19,6 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>().AddDefaultTokenProviders();
 
 builder.Services.AddScoped<IDbInitializer, DbInitializer>();
-builder.Services.AddScoped<IProfileService, ProfileService>();
 
 builder.Services.AddRazorPages();
 
@@ -37,6 +36,8 @@ identityServerBuilder.AddInMemoryClients(SD.Clients);
 identityServerBuilder.AddAspNetIdentity<ApplicationUser>();
 identityServerBuilder.AddDeveloperSigningCredential();
 identityServerBuilder.AddProfileService<ProfileService>();
+
+builder.Services.AddScoped<IProfileService, ProfileService>();
 
 
 var app = builder.Build();

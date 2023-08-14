@@ -44,10 +44,12 @@ authenticationBuilder.AddOpenIdConnect("oidc", options =>
     options.ClientId = "magic";
     options.ClientSecret = "secret";
     options.ResponseType = "code";
+
     options.TokenValidationParameters.NameClaimType = "name";
     options.TokenValidationParameters.RoleClaimType = "role";
     options.Scope.Add("magic");
     options.SaveTokens = true;
+
     options.ClaimActions.MapJsonKey("role", "role");
     options.Events = new OpenIdConnectEvents
     {
